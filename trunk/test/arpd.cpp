@@ -1,5 +1,7 @@
+#include "macaddress.h"
 
-#include <cstdio>
+#include <iostream>
+#include <iomanip>
 #include <cstdlib>
 #include <cstring>
 #include <sys/socket.h>
@@ -33,12 +35,48 @@ void makesock(const char *devname)
 		exit(1);
 	}
 	std::printf("Family: %08x\n", ifr.ifr_hwaddr.sa_family);
-	for (int i=0; i<6; i++) {
-		std::printf("Byte %02x\n", (int)
-			ifr.ifr_hwaddr.sa_data[i]);
+	MacAddress ourmac(ifr.ifr_hwaddr.sa_data);
+	std::cout << "Our mac: " << ourmac << std::endl;
+	// Determine ifindex of device
+	memset(&ifr, sizeof(ifr), 0);
+	std::strncpy(ifr.ifr_name, devname, IFNAMSIZ);
+	res = ioctl(sock, SIOCGIFINDEX, &ifr);
+	if (res != 0) {
+		std::perror("ioctl SIOCGIFINDEX");
+		exit(1);
 	}
+	int ifindex = ifr.ifr_ifindex;
+	std::cout << "Index " << ifindex << std::endl;
+	struct sockaddr_ll bindaddr;
+	memset(&bindaddr, sizeof(bindaddr),0);
+	bindaddr.sll_family = AF_PACKET;
+	bindaddr.sll_protocol = htons(ETH_P_ARP);
+	bindaddr.sll_ifindex = ifindex;
+	res = bind(sock, (struct sockaddr *) &bindaddr, sizeof(bindaddr));
+	if (res != 0) {
+		std::perror("bind");
+		exit(1);
+	}
+	
+	
 }
 
+static void printhex(const char *buf, int len)
+{
+		std::ios_base::fmtflags oldflags;
+		oldflags = std::cout.flags(std::ios_base::hex);
+		std::cout << std::setfill('0');
+
+		for (int n = 0; n < len; n++) {
+			if ((n > 0) && ((n % 8) == 0)) {
+				std::cout << std::endl;
+			}
+			std::cout << std::setw(2) << ((int) (unsigned char) buf[n]);
+		}
+		std::cout << std::endl;
+		std::cout.flags(oldflags);
+
+}
 static void getpackets()
 {
 	char buf[100];
@@ -51,8 +89,8 @@ static void getpackets()
 			perror("recvfrom");
 			exit(2);
 		}
-		std::printf("Got %d byte packet\n", len);
-
+		std::cout << "Got packet of length " << len << std::endl;
+		printhex(buf,len);
 	}
 }
 
