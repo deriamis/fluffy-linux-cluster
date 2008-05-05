@@ -25,7 +25,7 @@ struct MacAddress {
 		return (c == 0);
 	}
 	
-	void copyTo(char *ptr)
+	void copyTo(char *ptr) const
 	{
 		std::memcpy(ptr, bytes, 6);
 	}
