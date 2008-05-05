@@ -1,0 +1,18 @@
+1. Get arp daemon working *** DONE
+1. Work out what iptables rules to use.
+	Test using iptables + arp daemon
+	(assign same IP to both nodes, use iptables to
+		make new connections go to one then the other)
+	Check that established connections can continue to one
+	while the other is left alone.
+
+1. Get a deamon running which can enumerate other nodes
+	- Detect new nodes, failed nodes etc
+	- Assign boundaries
+1. Get a daemon which can process NFQUEUE packets based on the hashes of their addrs etc
+1. Link two daemons together
+1. Hook startup / shutdown iptables etc code into these daemons
+
+1. Make weight changing stuff
+1. Make link failure detection stuff
+

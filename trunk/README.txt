@@ -141,4 +141,22 @@ DESIGN/ HOW IT WORKS
 	can take the spare hash ranges and we won't get overlap when the
 	node with the failed link comes back.
 
+-------------------
+Malarky:
+
+MAC addresses to use for multicast:
+
+Use 03:00:01: followed by the last 3 bytes of the shared IP.
+
+----------------
+
+The following comment in CLUSTERIP is unbelivably important:
+
+/* despite being received via linklayer multicast, this is
+ * actually a unicast IP packet. TCP doesn't like PACKET_MULTICAST */
+     skb->pkt_type = PACKET_HOST;
+
+It will be necessary to replicate this behaviour through a (very simple) 
+kernel module.
+
 

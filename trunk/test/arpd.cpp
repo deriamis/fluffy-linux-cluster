@@ -89,7 +89,7 @@ static void printhex(const char *buf, int len)
 
 static void sendresponse(const MacAddress &sendermac, const IpAddress &senderip)
 {
-	std::cout << "Sending response to " << senderip << std::endl;
+	// std::cout << "Sending response to " << senderip << std::endl;
 	char buf[100];
 	struct ethhdr * hdr = (struct ethhdr *) buf;
 	memset(hdr, sizeof(struct ethhdr), 0);
@@ -136,9 +136,9 @@ static void sendresponse(const MacAddress &sendermac, const IpAddress &senderip)
 
 static void handlepacket(const char *buf, int len)
 {
-	std::cout << "Got packet of length " << len << std::endl;
-	std::cout << "Dest:" << MacAddress(buf) << std::endl;
-	std::cout << "Src:" << MacAddress(buf+6) << std::endl;
+	// std::cout << "Got packet of length " << len << std::endl;
+	// std::cout << "Dest:" << MacAddress(buf) << std::endl;
+	// std::cout << "Src:" << MacAddress(buf+6) << std::endl;
 	unsigned short proto = ntohs(*((unsigned short *) (buf+12)));
 	if (proto != ETH_P_ARP) {
 		return;
@@ -149,11 +149,19 @@ static void handlepacket(const char *buf, int len)
 	unsigned char hlen = *(unsigned char *) (arp+4);
 	unsigned char plen = *(unsigned char *) (arp+5);
 	unsigned short oper = ntohs(*((unsigned short *) (arp + 6)));
-	std::cout << "htype=" << htype << " ptype=" << ptype << 
-		" hlen=" << (int) hlen << " plen=" << (int) plen << std::endl;
-	std::cout << "oper=" << oper << std::endl;
+	// std::cout << "htype=" << htype << " ptype=" << ptype << 
+	//	" hlen=" << (int) hlen << " plen=" << (int) plen << std::endl;
+	// std::cout << "oper=" << oper << std::endl;
+	if (htype != 1) {
+		// Wrong htype.
+		return;
+	}
+	if (ptype != ETH_P_IP) {
+		// Wrong proto.
+		return;
+	}
 	if (oper == 1) {
-		std::cout << "ARP rq" << std::endl;
+		// std::cout << "ARP rq" << std::endl;
 		if ((hlen != 6) || (plen != 4)) {
 			std::cout << "Unexpected lengths in arp, ignoring" << std::endl;
 			return;
@@ -163,10 +171,12 @@ static void handlepacket(const char *buf, int len)
 		IpAddress senderip((struct in_addr *) (arp + 14));
 		MacAddress targetmac(arp + 18);
 		IpAddress targetip((struct in_addr *) (arp + 24));
+		/*
 		std::cout << "Sender MAC: " << sendermac << " IP: " << senderip
 			<< std::endl;
 		std::cout << "Target MAC: " << targetmac << " IP: " << targetip
 			<< std::endl;
+		*/
 		// Determine whether the target IP is one we are interested in...
 		if (targetip == our_arp_ip) {
 			sendresponse(sendermac, senderip);
