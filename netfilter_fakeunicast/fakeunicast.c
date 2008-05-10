@@ -64,10 +64,11 @@ static unsigned int
 	.priority = 0
  };
 
- static int __init init(void)
- {
-         return nf_register_hook(&fakeunicast_ops);
- }
+static int __init init(void)
+{
+	printk(KERN_NOTICE "fakeunicast module loaded\n");
+	return nf_register_hook(&fakeunicast_ops);
+}
 
  static void __exit fini(void)
  {

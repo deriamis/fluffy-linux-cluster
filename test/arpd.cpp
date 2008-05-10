@@ -94,8 +94,8 @@ static void sendresponse(const MacAddress &sendermac, const IpAddress &senderip)
 	struct ethhdr * hdr = (struct ethhdr *) buf;
 	memset(hdr, sizeof(struct ethhdr), 0);
 	sendermac.copyTo((char *) (hdr->h_dest));
-	// Spoof source of the mac that we're announcing.
-	our_arp_mac.copyTo((char *) hdr->h_source);
+	// our_arp_mac.copyTo((char *) hdr->h_source); // spoof source of cluster mac
+	local_mac.copyTo((char *) hdr->h_source); // send our true sender mac.
 	hdr->h_proto = htons(ETH_P_ARP);
 	const size_t payloadlen = 
 		8 // size of the arp header bits

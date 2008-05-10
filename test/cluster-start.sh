@@ -1,8 +1,4 @@
-IP=192.168.70.42
-NETMASK=24
-INTERFACE=eth0
-# MAC=03:00:01:00:00:28
-MAC=01:00:5e:00:00:28
+source config.sh
 
 # Start by cleaning up any previous stuff
 ip addr del dev $INTERFACE $IP/$NETMASK 2>&1 >/dev/null
