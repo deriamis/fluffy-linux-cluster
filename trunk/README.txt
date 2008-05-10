@@ -159,4 +159,12 @@ The following comment in CLUSTERIP is unbelivably important:
 It will be necessary to replicate this behaviour through a (very simple) 
 kernel module.
 
+----------------
+In our netfilter queue processing daemon, we can only ACCEPT or DROP packets;
+but if we accept them processing continues?
+
+If processing continues, we can affect it by using a netfilter packet "mark"
+which we can set using
+
+nfq_set_verdict_mark
 
