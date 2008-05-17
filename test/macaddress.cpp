@@ -32,3 +32,12 @@ std::istream & operator >> (std::istream &in, MacAddress &addr)
 	}
 	return in;
 }
+
+MacAddress MacAddress::fromString(const char *str)
+{
+	std::istringstream stream(str);
+	MacAddress addr;
+	stream >> addr;
+	return addr;
+}
+

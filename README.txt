@@ -168,3 +168,34 @@ which we can set using
 
 nfq_set_verdict_mark
 
+--------------------
+MULTICAST PACKET FORMAT
+
+1. 32-bit magic number so we know it's not junk
+	0x09bea717
+	(This will have to be changed if we ever change the protocol)
+2. Cluster IP address - so we know which is which if several
+	clusters run on the same network.
+3. Node's own IP address - so the recipient knows it's not somehow
+	been NAT'd or come out of the wrong interface
+	(32bit) - compared with the sender IP - if different, drop.
+4. Command type - byte:
+	0x01 - Weight /status announcement
+	0x02 - Master message
+5. Weight of the node (32bit) (Can be zero)
+6. In the case of a master message, a structure giving the
+	boundaries of all nodes in the cluster
+
+	byte - number of nodes
+	for each node:
+		IP address (32bit)
+		Lower boundary (32bit) (included)
+		Upper boundary (32bit) (excluded)
+
+	All this needs to be in a sensible endianness that we
+	can get right.
+
+Nodes can only be a master IF:
+1. It has a non-zero weight
+2. It has the lowest IP address of any candidate node.
+

@@ -29,7 +29,7 @@ struct MacAddress {
 	{
 		std::memcpy(ptr, bytes, 6);
 	}
-	
+	static MacAddress fromString(const char *str);	
 };
 // Declaration
 std::ostream & operator << (std::ostream &out, const MacAddress &addr);

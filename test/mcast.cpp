@@ -9,13 +9,16 @@
 #include <sys/time.h>
 #include <signal.h>
 #include <poll.h>
+#include <iostream>
+
+#include "ipaddress.h"
 
 static const unsigned int ourport = 15987;
 static in_addr multiaddr;
 
 static int sock;
 
-void makesock()
+static void makesock()
 {
 	sock = socket(PF_INET,SOCK_DGRAM,0);
 	if (sock == -1) {
@@ -35,7 +38,7 @@ void makesock()
 
 void multisetup()
 {
-	inet_aton("224.0.0.99", &multiaddr);
+	inet_aton("239.255.42.99", &multiaddr);
 	struct ip_mreqn mr;
 	mr.imr_multiaddr = multiaddr;
 	mr.imr_address.s_addr = INADDR_ANY;
@@ -48,7 +51,7 @@ void multisetup()
 		std::perror("join");
 		std::exit(2);
 	}
-	std::printf("So far so good\n");	
+	std::cout << "So far so good\n";
 }
 
 static void dotick()
@@ -66,7 +69,7 @@ static void dotick()
 	if (res != msglen) {
 		std::perror("sendto");
 	}
-	std::printf("Tick\n");
+	std::cout << "Tick\n";
 }
 
 static void readpacket()
@@ -80,8 +83,8 @@ static void readpacket()
 		std::perror("recvfrom");
 	} else {
 
-		std::printf("Got datagram of %d bytes from %s\n", len,
-			inet_ntoa( src.sin_addr));
+		std::cout << "Got datagram of " << len << " bytes from "
+			<< IpAddress(& (src.sin_addr)) << std::endl;
 	}
 }
 
