@@ -4,20 +4,17 @@
 extern "C" {
 #include <libnetfilter_queue/libnetfilter_queue.h>
 }
-#include <errno.h>
 
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include "ipaddress.h"
 #include "fnv.h"
-#include "qhandler.h"
-#include "utils.h"
 
 static const unsigned short QueueId = 42;
 
-// static int lowerHashLimit = 0;
-// static int upperHashLimit = 0x10000;
+static int lowerHashLimit = 0;
+static int upperHashLimit = 0x10000;
 
 static u_int32_t get_pkt_id (struct nfq_data *tb)
 {
@@ -34,8 +31,6 @@ static u_int32_t get_pkt_id (struct nfq_data *tb)
 static int packet_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
               struct nfq_data *nfa, void *data)
 {
-	QHandler *handler = (QHandler *) data;
-
 	u_int32_t id = get_pkt_id(nfa);
 	char *payload;
 	int payload_len;
@@ -44,8 +39,8 @@ static int packet_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	// Determine addresses
 	IpAddress srcaddr((struct in_addr *) (payload + 12));
 	IpAddress dstaddr((struct in_addr *) (payload + 16));
-	// std::cout << "Got packet ID " << id << 
-	// 	" from " << srcaddr << " to " << dstaddr << std::endl;
+	std::cout << "Got packet ID " << id << 
+		" from " << srcaddr << " to " << dstaddr << std::endl;
 	// Work out what proto it is...
 	int proto = (int) (unsigned char) payload[9];
 	FnvHash hash;
@@ -53,50 +48,33 @@ static int packet_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	if (proto == IPPROTO_TCP) {
 		unsigned short sport = ntohs( *(unsigned short *) (payload+20));
 		unsigned short dport = ntohs( *(unsigned short *) (payload+22));
-		// std::cout << "TCP sport " << sport << " dport " << dport
-		// 	<< std::endl;
+		std::cout << "TCP sport " << sport << " dport " << dport
+			<< std::endl;
 		hash.addData(payload + 20, 4); // src + dst ports
 	}
 	int hashvalue = hash.get16rev();
-	// std::cout << "Hash value=" << hashvalue << std::endl;
+	std::cout << "Hash value=" << hashvalue << std::endl;
 	u_int32_t verdict = NF_DROP;
-	if ((hashvalue >= handler->lowerHashLimit) && (hashvalue < handler->upperHashLimit))
+	if ((hashvalue >= lowerHashLimit) && (hashvalue < upperHashLimit))
 		verdict = NF_ACCEPT;
-	std::cout << "Connection from " << srcaddr << " Hash value=" << hashvalue << " Accept: " << (verdict == NF_ACCEPT ? "yes" : "no") << std::endl;
-	return nfq_set_verdict(handler->GetQh(), id, verdict, 0, NULL);
+	return nfq_set_verdict(qh, id, verdict, 0, NULL);
 }
 
-void QHandler::HandleMessage()
+static int run_daemon()
 {
- 	char buf[4096];
-	int rv = recv(sock, buf, sizeof(buf), 0);
-	if (rv > 0) {
-	   nfq_handle_packet(h, buf, rv);
-	} else {
-		if (errno != EAGAIN) {
-			throw std::runtime_error("recv failed");
-		}
-	}
-}
-
-QHandler::QHandler(unsigned short qid) : qid(qid)
-{
-	// Default these to 0, so we won't handle anything.
-	lowerHashLimit = 0;
-	upperHashLimit = 0;
-
+	struct nfq_handle *h;
 	std::cout << "Opening library..." << std::endl;
 	h = nfq_open();
 	if (h == 0) { throw std::runtime_error("Cannot open lib"); }
 	// Unbind existing handler
 	if (nfq_unbind_pf(h, AF_INET) < 0) {
-	    std::cerr << "error during nfq_unbind_pf() - maybe this is ok\n";
+	    std::cerr << "error during nfq_unbind_pf()\n";
 	}
 	// Bind new handler
 	if (nfq_bind_pf(h, AF_INET) < 0) {
 	    throw std::runtime_error("nfq_bind_pf failed");
 	}
-	qh = nfq_create_queue(h,  QueueId, &packet_callback, this);
+	struct nfq_q_handle *qh = nfq_create_queue(h,  QueueId, &packet_callback, 0);
 	if (qh == 0) { throw std::runtime_error("Cannot create queue"); }
 	// Set packet copy mode...
 	if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0) {
@@ -104,22 +82,27 @@ QHandler::QHandler(unsigned short qid) : qid(qid)
 	}
 
 	// Get the nl handle and file descriptor...
-	nh = nfq_nfnlh(h);
-	sock = nfnl_fd(nh);
-	// So far so good.
-	// Set our socket non blocking.
-	SetNonBlocking(sock);
-}
+	struct nfnl_handle *nh = nfq_nfnlh(h);
+	int fd = nfnl_fd(nh);
+	bool finished = false;
+	std::cout << "entering main loop\n";
+	while (! finished) {
+		char buf[4096];
+                int rv = recv(fd, buf, sizeof(buf), 0);
+                if (rv > 0) {
+                        nfq_handle_packet(h, buf, rv);
+                } else {
+                        perror("recv");
+			throw std::runtime_error("recv failed");
+                }
+        }
 
-QHandler::~QHandler()
-{
 	std::cout << "unbinding from queue\n";
         nfq_destroy_queue(qh);
 	nfq_close(h);
+	return 0;
 }
 
-
-/*
 int main(int argc, char *argv[])
 {
 	if (argc >= 3) {
@@ -128,4 +111,3 @@ int main(int argc, char *argv[])
 	}
 	return run_daemon();
 }
-*/

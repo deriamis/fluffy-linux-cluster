@@ -10,14 +10,20 @@
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <netpacket/packet.h>
+#include <poll.h>
+#include <sys/time.h>
 
 #include "fluffycluster.h"
+#include "ifholder.h"
+#include "membership.h"
+#include "qhandler.h"
 
 ClusterInfo clusterinfo;
 
-static void initmulticastll()
+static void initclustermac()
 {
-	clusterinfo.macaddress = MacAddress::fromString("03:00:01:aa:aa:aa");
+	// clusterinfo.macaddress = MacAddress::fromString("03:00:01:aa:aa:aa");
+	clusterinfo.macaddress = MacAddress::fromString("02:00:01:aa:aa:aa");
 	// Copy the last 3 bytes of the IP address into our mac.
 	clusterinfo.macaddress.bytes[3] = 
 		(char) ( (clusterinfo.ipaddress.ipnum >> 16) & 0xff);
@@ -25,26 +31,7 @@ static void initmulticastll()
 		(char) ( (clusterinfo.ipaddress.ipnum >> 8) & 0xff);
 	clusterinfo.macaddress.bytes[5] = 
 		(char) ( clusterinfo.ipaddress.ipnum & 0xff);
-	std::cout << "Our multicast addr " << clusterinfo.macaddress << std::endl;
-	// We aren't actually interested in ARP packets
-	// This socket is just to join a LL multicast group.
-	int sock = socket(PF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
-	if (sock == -1) {
-		throw std::runtime_error("raw socket");
-	}
-	struct packet_mreq pmr;
-	memset(&pmr, sizeof(pmr),0);
-	pmr.mr_ifindex = clusterinfo.ifindex;
-	pmr.mr_type = PACKET_MR_MULTICAST;
-	pmr.mr_alen = 6;
-	clusterinfo.macaddress.copyTo((char *) pmr.mr_address);
-	int res = setsockopt(sock, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &pmr,
-		sizeof(pmr));
-	if (res != 0) {
-		throw std::runtime_error("joining ll multi group");
-	}
-	std::cout << "Great joined ll multi group \n";
-	sleep(600);
+	std::cout << "Cluster mac addr " << clusterinfo.macaddress << std::endl;
 }
 
 static void initinfo()
@@ -90,11 +77,59 @@ static void initinfo()
 
 	clusterinfo.localip.copyFromInAddr(& (plocaladdr->sin_addr));
 	close(sock);
-	initmulticastll();
+	initclustermac();
+
 	std::cout << "Interface: " << clusterinfo.ifname << std::endl
 		<< "Index: " << clusterinfo.ifindex << std::endl
 		<< "Local MAC: " << clusterinfo.localmac << std::endl
 		<< "Local IP: " << clusterinfo.localip << std::endl;
+}
+
+static void mainloop()
+{
+	ClusterMembership membership(clusterinfo.localip, clusterinfo.ipaddress);
+	QHandler qhand(42); // Queue ID
+	std::cout << "I enter the main loop here \n";
+	bool finished = false;
+	struct timeval nexttick;
+	gettimeofday(&nexttick, 0);
+	while (! finished) {
+		struct pollfd fds[2];
+		fds[0].fd = qhand.sock;
+		fds[0].events = POLLIN | POLLERR;
+		fds[0].revents = 0;
+		fds[1].fd = membership.sock;
+		fds[1].events = POLLIN | POLLERR;
+		fds[1].revents = 0;
+		int timeleft = 1000; // milliseconds
+		struct timeval now;
+		gettimeofday(&now, 0);
+		timeleft = (nexttick.tv_sec - now.tv_sec) * 1000 +
+			((nexttick.tv_usec - now.tv_usec) / 1000);
+		if (timeleft <= 0) {
+			membership.Tick();
+			nexttick.tv_sec = now.tv_sec + 1;
+			nexttick.tv_usec = now.tv_usec;
+		} else {
+			int res = poll(fds, 2, timeleft);
+			if (res == -1) {
+				throw std::runtime_error("poll failed");
+			}
+			if (fds[0].revents != 0) {
+				qhand.HandleMessage();
+			}
+			if (fds[1].revents != 0) {
+				membership.HandleMessage();
+			}
+		}
+	}
+}
+
+static void runcluster()
+{
+	initinfo();
+	InterfaceHolder ifholder(clusterinfo.ifindex, clusterinfo.macaddress);
+	mainloop();
 }
 
 int main(int argc, const char *argv[])
@@ -104,5 +139,5 @@ int main(int argc, const char *argv[])
 	}
 	clusterinfo.ifname = argv[1];
 	clusterinfo.ipaddress.copyFromString(argv[2]);
-	initinfo();
+	runcluster();
 }

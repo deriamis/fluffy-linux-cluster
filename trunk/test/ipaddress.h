@@ -1,3 +1,6 @@
+#ifndef IPADDRESS_INCLUDED
+ #define IPADDRESS_INCLUDED
+
 #include <set>
 #include <string>
 #include <arpa/inet.h>
@@ -36,3 +39,4 @@ typedef std::set<IpAddress>::const_iterator IpAddressSetIterator;
 
 std::ostream & operator << (std::ostream &out, const IpAddress &addr);
 
+#endif // IPADDRESS_INCLUDED
