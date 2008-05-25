@@ -91,6 +91,7 @@ static void mainloop(int initialWeight)
 		clusterinfo.ifindex);
 	membership.weight = initialWeight;
 	QHandler qhand(42); // Queue ID
+	membership.qhand = &qhand;
 	std::cout << "I enter the main loop here \n";
 	bool finished = false;
 	struct timeval nexttick;

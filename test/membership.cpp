@@ -3,6 +3,8 @@
 #include "ipaddress.h"
 #include "utils.h"
 #include "timing.h"
+#include "qhandler.h"
+
 #include <sys/time.h>
 
 #include <stdexcept>
@@ -18,6 +20,16 @@ static const unsigned int MagicNumber = 0x09bea717;
 static const int MaxNodeAge = 3500; // milliseconds
 static const int ForgetNodeAge = 600000; // milliseconds
 static const int ZeroWeightTime = 4500; // milliseconds
+// The maximum number of nodes controls the max packet size etc.
+// This is set arbitrarily, the size needed is approximately
+// MaxNodes * 12  + 21 (i.e. 1221 current), which of course
+// needs to stay under the maximum UDP datagram (63kish)
+// However, it is also handy if it stays under the ethernet MTU
+// with headers etc, which is 1500 bytes, so 100 is about right.
+// Also, with 100 nodes, a lot of traffic will be going to all
+// the nodes, possibly causing scalability issues (depending on 
+// the application)
+static const int MaxNodes = 100;
 
 static int makesock(const IpAddress & bindaddr)
 {
@@ -64,6 +76,8 @@ static void multisetup(int sock, const IpAddress &bindaddr, int ifindex)
 
 ClusterMembership::ClusterMembership(const IpAddress &bindaddr, const IpAddress &clusteraddr, int ifindex)
 {
+	// Set qhand to null initially
+	qhand = 0;
 	// Open multicast socket...
 	sock = makesock(bindaddr);
 	// Join multicast group(s)
@@ -110,7 +124,7 @@ void ClusterMembership::Tick()
         dst.sin_family = AF_INET;
         dst.sin_port = htons(ourport);
         dst.sin_addr = multiaddr;
-        const int buflen = 384;
+        const int buflen = 1400;
         char msg[buflen];
         std::memset(msg,0,buflen);
 	int msglen = buildPacket(msg, buflen);
@@ -184,14 +198,14 @@ int ClusterMembership::buildPacket(char *buf, int maxlen)
 		calcBoundaries();
 		int nodenumOffset = l; // Reserve a byte for num nodes
 		l = l + 1;
-		int numnodes;
+		int numnodes = 0;
 		for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
 			if (l > (maxlen - 16)) {
 				throw std::runtime_error("Buffer is in danger of overflow");
 			}
 			const IpAddress & ip = (*i).first;
 			NodeInfo &ni = (*i).second;
-			if (ni.isup) {
+			if (ni.isup && (ni.upperHashLimit != 0)) {
 				ip.copyTo(& (buf[l])); l += 4;
 				*(int *) & buf[l] = htonl(ni.lowerHashLimit); l += 4;
 				*(int *) & buf[l] = htonl(ni.upperHashLimit); l += 4;
@@ -218,21 +232,28 @@ void ClusterMembership::calcBoundaries()
 	}
 	const int BoundarySize = 0x10000;
 	int n = 0;
+	int num = 0;
 	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
-		const IpAddress & ip = (*i).first;
+		// const IpAddress & ip = (*i).first;
 		NodeInfo &ni = (*i).second;
-		if (ni.isup) {
+		if (ni.isup && (ni.weight > 0) && (num < MaxNodes)) {
 			ni.lowerHashLimit = n / totalweight;
 			n += ( BoundarySize * ni.weight);
 			ni.upperHashLimit = n / totalweight;
-			std::cout << "Node:" << ip << " Boundaries: " << 
+			/* std::cout << "Node:" << ip << " Boundaries: " << 
 				ni.lowerHashLimit << " to " << ni.upperHashLimit <<
 				std::endl;
+			*/
+			num ++;
 		} else {
 			ni.lowerHashLimit = 0;
 			ni.upperHashLimit = 0;
 		}
 	}
+	const NodeInfo &localnode = nodes[localaddr];
+	setNewLocalBoundaries(localnode.lowerHashLimit, 
+		localnode.upperHashLimit);
+	// std::cout << "Master active nodes: " << num << std::endl;
 }
 
 void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress & src)
@@ -278,6 +299,51 @@ void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress &
 	}
 	// Timestamp 
 	gettimeofday(& (nodes[src].lastheard), 0);
+	if (cmd == CommandMaster) {
+		decodeMasterPacket(buf,len,src);
+	}
+}
+
+void ClusterMembership::decodeMasterPacket(const char *buf, int len, 
+	const IpAddress & src)
+{
+	if (len < 21) {
+		// too small.
+		return;
+	}
+	int numnodes = (int) (buf[20]);
+	// A master announcement is only helpful if there are at least
+	// two nodes in it, and fewer than the max
+	if ((numnodes < 2) || (numnodes > MaxNodes)) {
+		return;
+	}
+	// We need 12 bytes per node
+	if (len < (21 + (12 * numnodes))) {
+		// still too small.
+		return;
+	}
+	int newLower = 0;
+	int newUpper = 0;
+	const char *nodebuf = (buf + 21);
+	for (int i=0; i< numnodes; i++) {
+		int offset = (i * 12);
+		IpAddress ip;
+		ip.copyFromInAddr((struct in_addr *) (nodebuf+offset));
+		if (ip == localaddr) {
+			newLower = ntohl(*(int *)(nodebuf + offset + 4));
+			newUpper = ntohl(*(int *)(nodebuf + offset + 8));
+		}
+	}
+	setNewLocalBoundaries(newLower, newUpper);
+}
+
+void ClusterMembership::setNewLocalBoundaries(int lower, int upper)
+{
+	std::cout << "New boundaries: " << lower << " to " << upper << std::endl;
+	if (qhand != 0) {
+		qhand->lowerHashLimit = lower;
+		qhand->upperHashLimit = upper;
+	}
 }
 
 

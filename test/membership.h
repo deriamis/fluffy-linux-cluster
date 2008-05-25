@@ -2,6 +2,8 @@
 #include "ipaddress.h"
 #include <map>
 
+class QHandler;
+
 struct NodeInfo {
 	bool isme;
 	bool isup;
@@ -27,6 +29,7 @@ class ClusterMembership {
 		int weight;
 		int effectiveWeight;
 		struct timeval starttime;
+		QHandler * qhand;
 	public:
 		ClusterMembership(const IpAddress & bindaddr, const IpAddress & clusteraddr, int ifindex);
 		void HandleMessage();
@@ -34,7 +37,9 @@ class ClusterMembership {
 	private:
 		int buildPacket(char *buf, int maxlen);
 		void decodePacket(const char *buf, int len, const IpAddress &src);
+		void decodeMasterPacket(const char *buf, int len, const IpAddress &src);
 		void calcBoundaries();
+		void setNewLocalBoundaries(int lower, int upper);
 		IpNodeMap nodes;
 };
 
