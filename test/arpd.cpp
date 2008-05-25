@@ -71,6 +71,7 @@ void makesock(const char *devname)
 	}
 }
 
+/*
 static void printhex(const char *buf, int len)
 {
 	std::ios_base::fmtflags oldflags;
@@ -86,6 +87,7 @@ static void printhex(const char *buf, int len)
 	std::cout << std::endl;
 	std::cout.flags(oldflags);
 }
+*/
 
 static void sendresponse(const MacAddress &sendermac, const IpAddress &senderip)
 {

@@ -12,10 +12,12 @@ InterfaceHolder::InterfaceHolder(int ifindex, const MacAddress & sharedmac)
 {
      this->ifindex = ifindex;
      this->sharedmac = sharedmac;
-     // We aren't actually interested in ARP packets
+     // We aren't actually interested in any packets
      // This socket is just to join a LL multicast group.
      // Or to set promiscuous mode.
-     sock = socket(PF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
+     // We actually use some strange unused protocol number and hope
+     // that we don't see too many packets
+     sock = socket(PF_PACKET,SOCK_RAW,htons(ETH_P_ARP + 1));
      if (sock == -1) {
              throw std::runtime_error("raw socket");
      }

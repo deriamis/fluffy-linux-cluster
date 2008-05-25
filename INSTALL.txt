@@ -1,0 +1,62 @@
+Fluffy cluster installation
+---------------------------
+markxr@gmail.com
+
+At the moment you don't install.
+
+0. Install the fakeunicast.ko kernel module from
+	netfilter_fakeunicast/
+	Depending on your kernel version, source code mods
+	may be necessary. It is very simple.
+
+1. In the "test" directory, edit config.sh as appropriate
+2. Run cluster-start.sh -
+	this will setup iptables arptables, run arpd and 
+	add the (un) necessary multicast / ip addresses
+3. Run 
+	./fluffycluster eth0 192.168.70.42
+
+	Replace those with your interface and shared IP
+
+	An optional third parameter gives the node weight
+	(default=100)
+
+4. Wait 5 seconds - you should now be able to connect to a
+	tcp-based service on your host from a foreign source.
+
+5. Repeat the process on another node in the cluster -
+	hash ranges should change (after 5 seconds) and
+
+6. Attempt to connect to the cluster from another source
+	- it should load balance the two machines accordingly.
+	A new connection will be sent seemingly arbitrarily to
+	one of the hosts in the cluster.
+
+
+7. Pull the plug on one - it should notice and the other should
+	transparently take over.
+
+8. To stop a node, kill (ctrl-c) fluffycluster, then run
+	cluster-stop.sh which should undo everything.
+	Unload the kernel module if desired (it is fairly
+	benign)
+----------------
+
+TODO:
+
+a. Automate the above better
+b. Have a mechanism to change node weight on the fly
+c. Detect link failures, so we don't get "split brain"
+d. Have arpd automatically launched - have only one
+	node respond to ARPs
+e. Detect clock adjustments so we don't get confused
+	by them.
+f. Handle signals - gracefully shut down - set weight to 
+	zero - don't handle new connections but keep
+	existing ones.
+
+g. Have a simple config file, daemonise etc.
+
+
+
+
