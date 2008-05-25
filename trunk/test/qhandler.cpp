@@ -51,8 +51,8 @@ static int packet_callback(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	FnvHash hash;
 	hash.addData(payload + 12, 8); // src + dst addr
 	if (proto == IPPROTO_TCP) {
-		unsigned short sport = ntohs( *(unsigned short *) (payload+20));
-		unsigned short dport = ntohs( *(unsigned short *) (payload+22));
+		// unsigned short sport = ntohs( *(unsigned short *) (payload+20));
+		// unsigned short dport = ntohs( *(unsigned short *) (payload+22));
 		// std::cout << "TCP sport " << sport << " dport " << dport
 		// 	<< std::endl;
 		hash.addData(payload + 20, 4); // src + dst ports
