@@ -29,8 +29,11 @@ struct IpAddress {
 	};
 	IpAddress() : ipnum(0) {
 	};
-	bool operator == (const IpAddress &other) {
+	bool operator == (const IpAddress &other) const {
 		return ipnum == other.ipnum;
+	};
+	bool operator != (const IpAddress &other) const {
+		return ipnum != other.ipnum;
 	};
 };
 

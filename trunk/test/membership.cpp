@@ -2,6 +2,8 @@
 
 #include "ipaddress.h"
 #include "utils.h"
+#include "timing.h"
+#include <sys/time.h>
 
 #include <stdexcept>
 #include <errno.h>
@@ -9,6 +11,13 @@
 
 static const unsigned int ourport = 15987;
 static in_addr multiaddr;
+
+enum CommandType { CommandStatus =1, CommandMaster = 2 };
+static const unsigned int MagicNumber = 0x09bea717;
+
+static const int MaxNodeAge = 3500; // milliseconds
+static const int ForgetNodeAge = 600000; // milliseconds
+static const int ZeroWeightTime = 4500; // milliseconds
 
 static int makesock(const IpAddress & bindaddr)
 {
@@ -26,13 +35,13 @@ static int makesock(const IpAddress & bindaddr)
         }
 	return sock;
 }
-static void multisetup(int sock, const IpAddress &bindaddr)
+static void multisetup(int sock, const IpAddress &bindaddr, int ifindex)
 {
         inet_aton("239.255.42.99", &multiaddr);
         struct ip_mreqn mr;
         mr.imr_multiaddr = multiaddr;
 	bindaddr.copyToInAddr(& mr.imr_address);
-        mr.imr_ifindex = 0;
+        mr.imr_ifindex = ifindex;
         int res = setsockopt(sock, IPPROTO_IP,
                         IP_ADD_MEMBERSHIP,
                         & mr,
@@ -46,17 +55,31 @@ static void multisetup(int sock, const IpAddress &bindaddr)
         if (res == -1) {
                 throw std::runtime_error("multicast loop");
         }
+	res = setsockopt(sock, IPPROTO_IP,
+		IP_MULTICAST_IF, &mr, sizeof(mr));
+        if (res == -1) {
+                throw std::runtime_error("multicast interface");
+        }
 }
 
-ClusterMembership::ClusterMembership(const IpAddress &bindaddr, const IpAddress &clusteraddr)
+ClusterMembership::ClusterMembership(const IpAddress &bindaddr, const IpAddress &clusteraddr, int ifindex)
 {
 	// Open multicast socket...
 	sock = makesock(bindaddr);
 	// Join multicast group(s)
-	multisetup(sock, bindaddr);
+	multisetup(sock, bindaddr, ifindex);
 	// Make it nonblocking.
 	SetNonBlocking(sock);
 	this->clusteraddr = clusteraddr;
+	this->localaddr = bindaddr;
+	// Record the startup time
+	gettimeofday(& starttime, 0);
+	effectiveWeight = 0;
+	// Add our own host to "nodes"
+	nodes[bindaddr] = NodeInfo();
+	nodes[bindaddr].isme = true;
+	nodes[bindaddr].isup = true;
+	nodes[bindaddr].weight = effectiveWeight;
 }
 
 void ClusterMembership::HandleMessage()
@@ -76,7 +99,7 @@ void ClusterMembership::HandleMessage()
 		throw std::runtime_error("recv failed");
 	}
 	// decide what to do with it etc
-	std::cout << "Got packet length:" << len << std::endl;
+	decodePacket(buf,len, IpAddress(& sender.sin_addr));
 }
 
 void ClusterMembership::Tick()
@@ -87,9 +110,10 @@ void ClusterMembership::Tick()
         dst.sin_family = AF_INET;
         dst.sin_port = htons(ourport);
         dst.sin_addr = multiaddr;
-        const int msglen = 10;
-        char msg[msglen];
-        std::memset(msg,0,msglen);
+        const int buflen = 384;
+        char msg[buflen];
+        std::memset(msg,0,buflen);
+	int msglen = buildPacket(msg, buflen);
 
         int res = sendto(sock, msg, msglen, 0 /* flags */,
                 (struct sockaddr *) & dst, sizeof(dst));
@@ -97,6 +121,163 @@ void ClusterMembership::Tick()
                 std::perror("sendto");
 		throw std::runtime_error("sendto");
         }
-        std::cout << "Tick\n";
+	struct timeval now;
+	gettimeofday(&now, 0);
+	// Set the local node effective weight.
+	int timesincestart = timevalSub(now, starttime);
+	if (timesincestart < ZeroWeightTime) {
+		effectiveWeight = 0;
+	} else {
+		effectiveWeight = weight;
+	}
+	// Store the effective weight so we can take it into account
+	// determining if we are to be master or not
+	nodes[localaddr].weight = effectiveWeight;
+
+	// Calculate IP of the new master, to see if it's
+	// us.
+	IpAddress newMaster;
+	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
+		const IpAddress & ip = (*i).first;
+		NodeInfo &ni = (*i).second;
+		int age = timevalSub(now, ni.lastheard);
+		if (ni.isup && ! ni.isme) {
+			if (age > MaxNodeAge) {
+				std::cout << "Node down:" << ip << std::endl;
+				ni.isup = false;
+			}
+		}
+		if (ni.isup && (ni.weight > 0)) {
+			if (newMaster == IpAddress()) {
+				newMaster = ip;
+			}
+		}
+	}
+       	if (newMaster != master) {
+		master = newMaster;
+		std::cout << "New master: " << master << std::endl;
+	}
 }
+
+int ClusterMembership::buildPacket(char *buf, int maxlen)
+{
+	int l = 0;
+	// Magic number
+	*(unsigned int *) buf = htonl(MagicNumber);
+	l += 4;
+	// Cluster IP
+	clusteraddr.copyTo(& (buf[l])); l += 4;
+	// Our IP
+	localaddr.copyTo(& (buf[l])); l += 4;
+	bool ismaster = (localaddr == master);
+	CommandType cmd = CommandStatus;
+	if (ismaster) {
+		cmd = CommandMaster;
+	}
+	// Command type	
+	*(unsigned int *) & buf[l] = htonl(cmd); l += 4;
+	// Node weight
+	*(int *) & buf[l] = htonl(effectiveWeight); l += 4;
+	// If we're the master, add the number of nodes 
+	// followed by their limits...
+	if (ismaster) {
+		calcBoundaries();
+		int nodenumOffset = l; // Reserve a byte for num nodes
+		l = l + 1;
+		int numnodes;
+		for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
+			if (l > (maxlen - 16)) {
+				throw std::runtime_error("Buffer is in danger of overflow");
+			}
+			const IpAddress & ip = (*i).first;
+			NodeInfo &ni = (*i).second;
+			if (ni.isup) {
+				ip.copyTo(& (buf[l])); l += 4;
+				*(int *) & buf[l] = htonl(ni.lowerHashLimit); l += 4;
+				*(int *) & buf[l] = htonl(ni.upperHashLimit); l += 4;
+				numnodes ++;
+			}
+		}
+		// Add number of nodes.
+		buf[nodenumOffset] = (char) numnodes;
+	}
+	return l;
+}
+
+// As the master, calculate new hash boundaries...
+void ClusterMembership::calcBoundaries()
+{
+	int totalweight = 0;
+	// Store our own weight in case it changed...
+	nodes[localaddr].weight = weight;
+	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
+		NodeInfo &ni = (*i).second;
+		if (ni.isup) {
+			totalweight += ni.weight;
+		}
+	}
+	const int BoundarySize = 0x10000;
+	int n = 0;
+	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
+		const IpAddress & ip = (*i).first;
+		NodeInfo &ni = (*i).second;
+		if (ni.isup) {
+			ni.lowerHashLimit = n / totalweight;
+			n += ( BoundarySize * ni.weight);
+			ni.upperHashLimit = n / totalweight;
+			std::cout << "Node:" << ip << " Boundaries: " << 
+				ni.lowerHashLimit << " to " << ni.upperHashLimit <<
+				std::endl;
+		} else {
+			ni.lowerHashLimit = 0;
+			ni.upperHashLimit = 0;
+		}
+	}
+}
+
+void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress & src)
+{
+	// Check length acceptable
+	if (len < 20) return;
+	// Check magic number
+	unsigned int magic = ntohl(* (unsigned int *) buf);
+	if (magic != MagicNumber) return;
+	// Check cluster IP
+	IpAddress decode_clusteraddr;
+	decode_clusteraddr.copyFromInAddr((struct in_addr *) (buf+4));
+	if (decode_clusteraddr != clusteraddr) return;
+	// Get source addr in packet, ensure it's the same as
+	// the sender.
+	IpAddress decode_src;
+	decode_src.copyFromInAddr((struct in_addr *) (buf+8));
+	if (decode_src != src) return;
+	CommandType cmd = (CommandType) ntohl(* (unsigned int *) (buf + 12));
+	unsigned int weight = ntohl(*(int *) (buf + 16));
+	// Ignore messages from my own node.
+	if (src == localaddr) return;
+	switch (cmd) {
+		case CommandStatus:
+		case CommandMaster:
+			// ok;
+			break;
+		default:
+			// unknown cmd
+			return;
+	}
+	// std::cout << "From " << src << " Command:" << cmd << " node weight:" << weight << std::endl;
+	// Check if it's already in nodemap.
+	if (nodes.find(src) == nodes.end())
+	{
+		nodes[src] = NodeInfo();
+	}
+	// Update weight and timestamp.
+	nodes[src].weight = weight;
+	if (! nodes[src].isup) {
+		nodes[src].isup = true;
+		std::cout << "Node up:" << src << std::endl;
+	}
+	// Timestamp 
+	gettimeofday(& (nodes[src].lastheard), 0);
+}
+
 

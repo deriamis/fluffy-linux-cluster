@@ -6,7 +6,7 @@ FLUFFYCLUSTER_OBJS=fluffycluster.o ipaddress.o macaddress.o \
     ifholder.o membership.o qhandler.o utils.o
 
 ALLHEADERS=fnv.h ipaddress.h macaddress.h qhandler.h  \
-	ifholder.h membership.h utils.h
+	ifholder.h membership.h utils.h timing.h
 ALLDEPS=Makefile $(ALLHEADERS)
 
 all: $(PROGS)

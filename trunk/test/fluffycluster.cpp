@@ -85,9 +85,11 @@ static void initinfo()
 		<< "Local IP: " << clusterinfo.localip << std::endl;
 }
 
-static void mainloop()
+static void mainloop(int initialWeight)
 {
-	ClusterMembership membership(clusterinfo.localip, clusterinfo.ipaddress);
+	ClusterMembership membership(clusterinfo.localip, clusterinfo.ipaddress,
+		clusterinfo.ifindex);
+	membership.weight = initialWeight;
 	QHandler qhand(42); // Queue ID
 	std::cout << "I enter the main loop here \n";
 	bool finished = false;
@@ -125,11 +127,11 @@ static void mainloop()
 	}
 }
 
-static void runcluster()
+static void runcluster(int initialWeight)
 {
 	initinfo();
 	InterfaceHolder ifholder(clusterinfo.ifindex, clusterinfo.macaddress);
-	mainloop();
+	mainloop(initialWeight);
 }
 
 int main(int argc, const char *argv[])
@@ -139,5 +141,9 @@ int main(int argc, const char *argv[])
 	}
 	clusterinfo.ifname = argv[1];
 	clusterinfo.ipaddress.copyFromString(argv[2]);
-	runcluster();
+	int initialWeight = 100;
+	if (argc > 3) {
+		initialWeight = std::atoi(argv[3]);
+	}
+	runcluster(initialWeight);
 }
