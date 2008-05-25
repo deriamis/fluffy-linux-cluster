@@ -18,15 +18,5 @@ struct ClusterInfo {
 	MacAddress localmac;
 };
 
-// These are populated into a map from IP addresses of
-// nodes.
-struct NodeInfo {
-	IpAddress ipaddress;
-	bool up; // Whether node is currently "up"
-	int weight; // Load balanced weight
-	
-
-};
-
 extern ClusterInfo clusterinfo;
 
