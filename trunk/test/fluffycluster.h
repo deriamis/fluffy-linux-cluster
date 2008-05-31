@@ -1,3 +1,5 @@
+#ifndef FLUFFYCLUSTER_H_INCLUDED
+  #define FLUFFYCLUSTER_H_INCLUDED
 
 #include "ipaddress.h"
 #include "macaddress.h"
@@ -20,3 +22,4 @@ struct ClusterInfo {
 
 extern ClusterInfo clusterinfo;
 
+#endif // FLUFFYCLUSTER_H_INCLUDED

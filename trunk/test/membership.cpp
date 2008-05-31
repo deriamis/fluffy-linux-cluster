@@ -116,10 +116,8 @@ void ClusterMembership::HandleMessage()
 	decodePacket(buf,len, IpAddress(& sender.sin_addr));
 }
 
-void ClusterMembership::Tick()
+void ClusterMembership::SendAnnouncement()
 {
-	// Called every 1s or so to time out
-	// to handle expired nodes etc
         struct sockaddr_in dst;
         dst.sin_family = AF_INET;
         dst.sin_port = htons(ourport);
@@ -135,6 +133,12 @@ void ClusterMembership::Tick()
                 std::perror("sendto");
 		throw std::runtime_error("sendto");
         }
+}
+
+void ClusterMembership::Tick()
+{
+	// Called every 1s or so to time out
+	// to handle expired nodes etc
 	struct timeval now;
 	gettimeofday(&now, 0);
 	// Set the local node effective weight.
@@ -171,6 +175,7 @@ void ClusterMembership::Tick()
 		master = newMaster;
 		std::cout << "New master: " << master << std::endl;
 	}
+	SendAnnouncement();
 }
 
 int ClusterMembership::buildPacket(char *buf, int maxlen)
@@ -339,11 +344,33 @@ void ClusterMembership::decodeMasterPacket(const char *buf, int len,
 
 void ClusterMembership::setNewLocalBoundaries(int lower, int upper)
 {
-	std::cout << "New boundaries: " << lower << " to " << upper << std::endl;
 	if (qhand != 0) {
-		qhand->lowerHashLimit = lower;
-		qhand->upperHashLimit = upper;
+		if ((qhand->lowerHashLimit != lower) || 
+			(qhand->upperHashLimit != upper)) {
+			std::cout << "New boundaries: " << lower << " to " << upper << std::endl;
+			qhand->lowerHashLimit = lower;
+			qhand->upperHashLimit = upper;
+		}
 	}
 }
 
+/*
+ * Destructor:
+ * 1. If our previous effective weight was more than 0, and
+ * there was at least one other node, send out a packet with zero
+ * weight so that the other nodes know we're off.
+ * 2. Clean up sockets etc
+ */
+ClusterMembership::~ClusterMembership()
+{
+	std::cout << "ClusterMembership destructor" << std::endl;
+	if (effectiveWeight > 0) {
+		weight = 0;
+		effectiveWeight = 0;
+		// If the master was us, make sure it isn't any more.
+		master = IpAddress();
+		SendAnnouncement();
+	}
+	close(sock);
+}
 

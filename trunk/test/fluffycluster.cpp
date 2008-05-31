@@ -12,18 +12,32 @@
 #include <netpacket/packet.h>
 #include <poll.h>
 #include <sys/time.h>
+#include <signal.h>
+#include <errno.h>
 
 #include "fluffycluster.h"
 #include "ifholder.h"
 #include "membership.h"
 #include "qhandler.h"
+#include "systemsetup.h"
+
+static bool sigcaught = false;
+static int sigcaughtnum = 0;
+
+class SignalException : public std::runtime_error {
+	public :
+		int signum;
+	SignalException(int signum, const char * what) : std::runtime_error(what), signum(signum) {
+
+	}
+};
 
 ClusterInfo clusterinfo;
 
 static void initclustermac()
 {
-	// clusterinfo.macaddress = MacAddress::fromString("03:00:01:aa:aa:aa");
-	clusterinfo.macaddress = MacAddress::fromString("02:00:01:aa:aa:aa");
+	clusterinfo.macaddress = MacAddress::fromString("03:00:01:aa:aa:aa");
+	// clusterinfo.macaddress = MacAddress::fromString("02:00:01:aa:aa:aa");
 	// Copy the last 3 bytes of the IP address into our mac.
 	clusterinfo.macaddress.bytes[3] = 
 		(char) ( (clusterinfo.ipaddress.ipnum >> 16) & 0xff);
@@ -85,8 +99,24 @@ static void initinfo()
 		<< "Local IP: " << clusterinfo.localip << std::endl;
 }
 
+static bool is_important_err(int myerrno)
+{
+	if ((myerrno == EINTR) || (myerrno == EAGAIN)) {
+		return false;
+	}
+	return true;
+}
+
+static void sigflagcheck()
+{
+	if (sigcaught) {
+		throw SignalException(sigcaughtnum, "Signal caught");
+	}
+}
+
 static void mainloop(int initialWeight)
 {
+	SystemSetup ss(clusterinfo);
 	ClusterMembership membership(clusterinfo.localip, clusterinfo.ipaddress,
 		clusterinfo.ifindex);
 	membership.weight = initialWeight;
@@ -116,7 +146,9 @@ static void mainloop(int initialWeight)
 		} else {
 			int res = poll(fds, 2, timeleft);
 			if (res == -1) {
-				throw std::runtime_error("poll failed");
+				if (is_important_err(errno)) {
+					throw std::runtime_error("poll failed");
+				}
 			}
 			if (fds[0].revents != 0) {
 				qhand.HandleMessage();
@@ -124,15 +156,47 @@ static void mainloop(int initialWeight)
 			if (fds[1].revents != 0) {
 				membership.HandleMessage();
 			}
+			sigflagcheck();
 		}
 	}
 }
 
-static void runcluster(int initialWeight)
+static void sighandler(int sig)
 {
-	initinfo();
-	InterfaceHolder ifholder(clusterinfo.ifindex, clusterinfo.macaddress);
-	mainloop(initialWeight);
+	sigcaught = true;
+	sigcaughtnum = sig;
+}
+
+static void initsignals()
+{
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGALRM);
+	sigaddset(&sigset, SIGPIPE);
+	sigaddset(&sigset, SIGCHLD);
+	sigaddset(&sigset, SIGUSR1);
+	sigaddset(&sigset, SIGUSR2);
+	sigprocmask(SIG_BLOCK, &sigset, 0);
+	signal(SIGTERM, sighandler);
+	signal(SIGINT, sighandler);
+	signal(SIGQUIT, sighandler);
+}
+
+static int runcluster(int initialWeight)
+{
+	try {
+		initsignals();
+		initinfo();
+		InterfaceHolder ifholder(clusterinfo.ifindex, clusterinfo.macaddress);
+		mainloop(initialWeight);
+	} catch (SignalException &sigex) {
+		std::cerr << "Caught signal " << sigex.signum << std::endl;
+		return 1;
+	} catch (std::runtime_error &err) {
+		std::cerr << "Unexpected runtime error: " << err.what() << std::endl;
+		return 2;
+	}
+	return 0;
 }
 
 int main(int argc, const char *argv[])
@@ -146,5 +210,5 @@ int main(int argc, const char *argv[])
 	if (argc > 3) {
 		initialWeight = std::atoi(argv[3]);
 	}
-	runcluster(initialWeight);
+	return runcluster(initialWeight);
 }

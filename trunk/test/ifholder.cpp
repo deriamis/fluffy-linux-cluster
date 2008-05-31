@@ -24,8 +24,8 @@ InterfaceHolder::InterfaceHolder(int ifindex, const MacAddress & sharedmac)
      struct packet_mreq pmr;
      memset(&pmr, sizeof(pmr),0);
      pmr.mr_ifindex = ifindex;
-     // pmr.mr_type = PACKET_MR_MULTICAST;
-     pmr.mr_type = PACKET_MR_PROMISC;
+     pmr.mr_type = PACKET_MR_MULTICAST;
+     // pmr.mr_type = PACKET_MR_PROMISC;
      pmr.mr_alen = 6;
      sharedmac.copyTo((char *) pmr.mr_address);
      int res = setsockopt(sock, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &pmr,

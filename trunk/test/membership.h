@@ -34,7 +34,9 @@ class ClusterMembership {
 		ClusterMembership(const IpAddress & bindaddr, const IpAddress & clusteraddr, int ifindex);
 		void HandleMessage();
 		void Tick();
+		~ClusterMembership();
 	private:
+		void SendAnnouncement();
 		int buildPacket(char *buf, int maxlen);
 		void decodePacket(const char *buf, int len, const IpAddress &src);
 		void decodeMasterPacket(const char *buf, int len, const IpAddress &src);
