@@ -139,6 +139,20 @@ static void mainloop(int initialWeight)
 		gettimeofday(&now, 0);
 		timeleft = (nexttick.tv_sec - now.tv_sec) * 1000 +
 			((nexttick.tv_usec - now.tv_usec) / 1000);
+		// std::cout << "timeleft=" << timeleft << std::endl;
+		if ((timeleft < -500) || (timeleft > 2000)) {
+			// Clock seems to have gone rather wonky.
+			membership.AdjustClock(now);
+		}
+		// Don't wait for more than 1200 ms, other nodes
+		// Might get bored waiting and think we've gone
+		// away.
+		if (timeleft > 1200) {
+			timeleft = 1200;
+			// Reset next tick time, it's gone wrong.
+			nexttick.tv_sec = now.tv_sec + 1;
+			nexttick.tv_usec = now.tv_usec;
+		}
 		if (timeleft <= 0) {
 			membership.Tick();
 			nexttick.tv_sec = now.tv_sec + 1;
@@ -189,10 +203,10 @@ static int runcluster(int initialWeight)
 		initinfo();
 		InterfaceHolder ifholder(clusterinfo.ifindex, clusterinfo.macaddress);
 		mainloop(initialWeight);
-	} catch (SignalException &sigex) {
+	} catch (const SignalException &sigex) {
 		std::cerr << "Caught signal " << sigex.signum << std::endl;
 		return 1;
-	} catch (std::runtime_error &err) {
+	} catch (const std::runtime_error &err) {
 		std::cerr << "Unexpected runtime error: " << err.what() << std::endl;
 		return 2;
 	}

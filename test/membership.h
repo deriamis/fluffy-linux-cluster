@@ -34,6 +34,7 @@ class ClusterMembership {
 		ClusterMembership(const IpAddress & bindaddr, const IpAddress & clusteraddr, int ifindex);
 		void HandleMessage();
 		void Tick();
+		void AdjustClock(const timeval &now);
 		~ClusterMembership();
 	private:
 		void SendAnnouncement();

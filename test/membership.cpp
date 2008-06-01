@@ -374,3 +374,21 @@ ClusterMembership::~ClusterMembership()
 	close(sock);
 }
 
+void ClusterMembership::AdjustClock(const timeval &now)
+{
+	std::cout << "Clock adjustment detected. Behaving accordingly."
+		<< std::endl;
+	// Modify all the nodes so their last seen time is now,
+	// because we don't know how much the clock has been changed by.
+	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
+		NodeInfo &ni = (*i).second;
+		ni.lastheard = now;
+	}
+	// If our starttime is in the future, move it.
+	if (starttime.tv_sec > now.tv_sec) {
+		starttime = now;
+		// Bypass ZeroWeightTime
+		starttime.tv_sec -= 10; 
+	}
+}
+
