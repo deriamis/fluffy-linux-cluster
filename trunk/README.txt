@@ -179,7 +179,7 @@ MULTICAST PACKET FORMAT
 3. Node's own IP address - so the recipient knows it's not somehow
 	been NAT'd or come out of the wrong interface
 	(32bit) - compared with the sender IP - if different, drop.
-4. Command type - byte:
+4. Command type - 32bit word:
 	0x01 - Weight /status announcement
 	0x02 - Master message
 5. Weight of the node (32bit) (Can be zero)
@@ -192,8 +192,7 @@ MULTICAST PACKET FORMAT
 		Lower boundary (32bit) (included)
 		Upper boundary (32bit) (excluded)
 
-	All this needs to be in a sensible endianness that we
-	can get right.
+	Everything is in "network byte order" i.e. big endian.
 
 Nodes can only be a master IF:
 1. It has a non-zero weight
