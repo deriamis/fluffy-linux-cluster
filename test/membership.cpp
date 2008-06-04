@@ -18,7 +18,7 @@ enum CommandType { CommandStatus =1, CommandMaster = 2 };
 static const unsigned int MagicNumber = 0x09bea717;
 
 static const int MaxNodeAge = 3500; // milliseconds
-static const int ForgetNodeAge = 600000; // milliseconds
+static const int ForgetNodeAge = 300000; // milliseconds
 static const int ZeroWeightTime = 4500; // milliseconds
 // The maximum number of nodes controls the max packet size etc.
 // This is set arbitrarily, the size needed is approximately
@@ -155,6 +155,7 @@ void ClusterMembership::Tick()
 	// Calculate IP of the new master, to see if it's
 	// us.
 	IpAddress newMaster;
+	IpNodeMap::iterator nodeToForget(0);
 	for (IpNodeMap::iterator i=nodes.begin(); i != nodes.end(); i++) {
 		const IpAddress & ip = (*i).first;
 		NodeInfo &ni = (*i).second;
@@ -170,6 +171,16 @@ void ClusterMembership::Tick()
 				newMaster = ip;
 			}
 		}
+		if ((age > ForgetNodeAge) && ! (ni.isup || ni.isme)) {
+			nodeToForget = i;
+		}
+	}
+	// If we have a node which has timed out, and needs to
+	// be "forgotten", forget it.
+	if (nodeToForget != IpNodeMap::iterator(0)) {
+		std::cout << "Forgetting node: " << nodeToForget->first 
+			<< std::endl;
+		nodes.erase(nodeToForget);
 	}
        	if (newMaster != master) {
 		master = newMaster;
@@ -312,8 +323,10 @@ void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress &
 void ClusterMembership::decodeMasterPacket(const char *buf, int len, 
 	const IpAddress & src)
 {
+	// NOTE: Should we check the src address as being
+	// the master we know and love?
 	if (len < 21) {
-		// too small.
+		// packet is too small to be a valid master packet.
 		return;
 	}
 	int numnodes = (int) (buf[20]);
@@ -324,7 +337,7 @@ void ClusterMembership::decodeMasterPacket(const char *buf, int len,
 	}
 	// We need 12 bytes per node
 	if (len < (21 + (12 * numnodes))) {
-		// still too small.
+		// too small for the number of nodes.
 		return;
 	}
 	int newLower = 0;
@@ -369,7 +382,13 @@ ClusterMembership::~ClusterMembership()
 		effectiveWeight = 0;
 		// If the master was us, make sure it isn't any more.
 		master = IpAddress();
-		SendAnnouncement();
+		// We need to ensure we don't throw in the destructor,
+		// as if we did, it would terminate()
+		try {
+			SendAnnouncement();
+		} catch (std::runtime_error &err) {
+			// Ingore this error.
+		}
 	}
 	close(sock);
 }
