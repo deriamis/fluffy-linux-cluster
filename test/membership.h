@@ -41,6 +41,7 @@ class ClusterMembership {
 		int buildPacket(char *buf, int maxlen);
 		void decodePacket(const char *buf, int len, const IpAddress &src);
 		void decodeMasterPacket(const char *buf, int len, const IpAddress &src);
+		void handleSetWeight(const char *buf, int len, const IpAddress &src);
 		void calcBoundaries();
 		void setNewLocalBoundaries(int lower, int upper);
 		IpNodeMap nodes;

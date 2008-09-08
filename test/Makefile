@@ -1,8 +1,9 @@
 
-PROGS=arpd fluffycluster
+PROGS=arpd fluffycluster setweight
 ARPD_OBJS=arpd.o macaddress.o ipaddress.o
 FLUFFYCLUSTER_OBJS=fluffycluster.o ipaddress.o macaddress.o \
     ifholder.o membership.o qhandler.o utils.o systemsetup.o
+SETWEIGHT_OBJS=setweight.o ipaddress.o
 
 ALLHEADERS=fnv.h ipaddress.h macaddress.h qhandler.h  \
 	ifholder.h membership.h utils.h timing.h systemsetup.h
@@ -17,7 +18,10 @@ arpd: $(ARPD_OBJS) $(ALLDEPS)
 
 fluffycluster: $(FLUFFYCLUSTER_OBJS) $(ALLDEPS)
 	g++ -o $@ $(FLUFFYCLUSTER_OBJS) -lnetfilter_queue
-	
+
+setweight: $(SETWEIGHT_OBJS) $(ALLDEPS)
+	g++ -o $@ $(SETWEIGHT_OBJS)
+
 LDFLAGS=
 CFLAGS=-Wall -O
 CPPFLAGS=-Wall -g

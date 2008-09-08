@@ -182,6 +182,8 @@ MULTICAST PACKET FORMAT
 4. Command type - 32bit word:
 	0x01 - Weight /status announcement
 	0x02 - Master message
+	0x03 - set node weight
+	0x04 - set node weight - response
 5. Weight of the node (32bit) (Can be zero)
 6. In the case of a master message, a structure giving the
 	boundaries of all nodes in the cluster
@@ -197,4 +199,31 @@ MULTICAST PACKET FORMAT
 Nodes can only be a master IF:
 1. It has a non-zero weight
 2. It has the lowest IP address of any candidate node.
+
+---------------------
+Setting node weight
+
+Send a unicast UDP frame to our port number on localhost; it will
+be received by the daemon and have the appropriate changes.
+
+The format is as above except:
+1. Cluster IP is all zeros
+2. Node's own IP address is all zeros
+3. Command type = 0x03
+4. Weight of node is the desired weight
+
+-------------------
+Extra security todo:
+
+Using recvmsg, get anciliary data to determine which i/f and
+dest address the communication packets came to. Drop them if they didn't
+arrive with the right i/f and dest.
+
+this means that spoofed messages which have the right info
+will still be dropped, because other hosts on the internet
+can't send to our multicast address because they won't be
+routed.
+
+Also "Set weight" packets must be received on 127.0.0.1, which
+can't be routed from anywhere else so can't be spoofed.
 
