@@ -14,7 +14,8 @@
 static const unsigned int ourport = 15987;
 static in_addr multiaddr;
 
-enum CommandType { CommandStatus =1, CommandMaster = 2 };
+enum CommandType { CommandStatus =1, CommandMaster = 2, 
+	CommandSetWeight = 3, CommandSetWeightResponse = 4 };
 static const unsigned int MagicNumber = 0x09bea717;
 
 static const int MaxNodeAge = 3500; // milliseconds
@@ -185,6 +186,11 @@ void ClusterMembership::Tick()
        	if (newMaster != master) {
 		master = newMaster;
 		std::cout << "New master: " << master << std::endl;
+		if (newMaster == IpAddress()) {
+			// no master at all, oh dear.
+			// set our own boundaries to 0 so we don't handle anything.
+			setNewLocalBoundaries(0,0);
+		}
 	}
 	SendAnnouncement();
 }
@@ -279,6 +285,13 @@ void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress &
 	// Check magic number
 	unsigned int magic = ntohl(* (unsigned int *) buf);
 	if (magic != MagicNumber) return;
+	CommandType cmd = (CommandType) ntohl(* (unsigned int *) (buf + 12));
+	// See if it's a "set weight" packet
+	if (cmd == CommandSetWeight) {
+		handleSetWeight(buf, len, src);
+		return;
+	}
+	// Otherwise, it's a normal multicast pkt.
 	// Check cluster IP
 	IpAddress decode_clusteraddr;
 	decode_clusteraddr.copyFromInAddr((struct in_addr *) (buf+4));
@@ -288,7 +301,6 @@ void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress &
 	IpAddress decode_src;
 	decode_src.copyFromInAddr((struct in_addr *) (buf+8));
 	if (decode_src != src) return;
-	CommandType cmd = (CommandType) ntohl(* (unsigned int *) (buf + 12));
 	unsigned int weight = ntohl(*(int *) (buf + 16));
 	// Ignore messages from my own node.
 	if (src == localaddr) return;
@@ -320,6 +332,23 @@ void ClusterMembership::decodePacket(const char *buf, int len, const IpAddress &
 	}
 }
 
+void ClusterMembership::handleSetWeight(const char *buf, int len, const IpAddress & src)
+{
+	// "Set Weight" packets always must come from localhost,
+	IpAddress localhost;
+	localhost.copyFromString("127.0.0.1");
+	if (src != localhost) {
+		// Bad.
+		return;
+	}
+	// their source IP and cluster IP fields are present but ignored.
+	unsigned int desiredWeight = ntohl(*(int *) (buf + 16));
+	// Set our own node's weight
+	std::cout << "Setting weight to " << desiredWeight << std::endl;
+	weight = desiredWeight;
+	
+}
+
 void ClusterMembership::decodeMasterPacket(const char *buf, int len, 
 	const IpAddress & src)
 {
@@ -330,9 +359,9 @@ void ClusterMembership::decodeMasterPacket(const char *buf, int len,
 		return;
 	}
 	int numnodes = (int) (buf[20]);
-	// A master announcement is only helpful if there are at least
-	// two nodes in it, and fewer than the max
-	if ((numnodes < 2) || (numnodes > MaxNodes)) {
+	// A master announcement is only helpful if there is at least
+	// one node in it, and fewer than the max
+	if ((numnodes < 1) || (numnodes > MaxNodes)) {
 		return;
 	}
 	// We need 12 bytes per node
