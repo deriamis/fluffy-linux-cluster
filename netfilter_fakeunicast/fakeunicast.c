@@ -26,6 +26,7 @@
 #include <linux/in.h>
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
+#include <linux/proc_fs.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mark Robson <markxr@gmail.com>");
@@ -64,15 +65,45 @@ static unsigned int
 	.priority = 0
  };
 
+static const char * proc_entry_name = "fakeunicast";
+
+static struct proc_dir_entry *procentry;
+
+/* Borrowed from proc_misc.c */
+static int proc_calc_metrics(char *page, char **start, off_t off,
+           int count, int *eof, int len)
+{
+        if (len <= off+count) *eof = 1;
+        *start = page + off;
+        len -= off;
+        if (len>count) len = count;
+        if (len<0) len = 0;
+        return len;
+}
+
+static int read_proc(char *page, char **start, off_t off,
+                                 int count, int *eof, void *data)
+{
+	int len = sprintf(page,"Installed ok\n");
+        return proc_calc_metrics(page, start, off, count, eof, len);
+}
+
+
 static int __init init(void)
 {
+	int ok;
 	printk(KERN_NOTICE "fakeunicast module loaded\n");
-	return nf_register_hook(&fakeunicast_ops);
+	ok = nf_register_hook(&fakeunicast_ops);
+	procentry = create_proc_read_entry(proc_entry_name,0,NULL,read_proc,NULL);
+	return ok;
 }
 
  static void __exit fini(void)
  {
-         nf_unregister_hook(&fakeunicast_ops);
+ 	if (procentry) {
+	        remove_proc_entry(proc_entry_name, NULL);
+	}
+        nf_unregister_hook(&fakeunicast_ops);
  }
 
  module_init(init);

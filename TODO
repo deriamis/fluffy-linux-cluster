@@ -9,11 +9,20 @@
 1. Get a deamon running which can enumerate other nodes
 	- Detect new nodes, failed nodes etc
 	- Assign boundaries
+	*** DONE ***
 1. Get a daemon which can process NFQUEUE packets based on the hashes of their addrs etc
 	*** DONE ***
 1. Link two daemons together
+	*** DONE ***
 1. Hook startup / shutdown iptables etc code into these daemons
+	*** DONE ***
 
 1. Make weight changing stuff
-1. Make link failure detection stuff
+	*** DONE ***
+1. Detect link failures - go into quiescent mode until link comes back, then
+	rejoin rest of cluster.
+
+1. Arp daemon should only operate in one or two nodes in a cluster.
+	- Don't want to flood arp replies for large cluster
+
 
