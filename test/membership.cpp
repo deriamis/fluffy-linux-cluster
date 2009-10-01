@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <errno.h>
 #include <iostream>
+#include <cstring>
 
 static const unsigned int ourport = 15987;
 static in_addr multiaddr;
